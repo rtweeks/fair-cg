@@ -472,10 +472,10 @@ module FairCG::Charset
     when /u/io
       l, *t = c.bytes.to_a
       indicated_t_count = case l
-      when 0x00..0x7F: return l
-      when 0xC2..0xDF: 1
-      when 0xE0..0xEF: 2
-      when 0xF0..0xF7: 3
+      when 0x00..0x7F then return l
+      when 0xC2..0xDF then 1
+      when 0xE0..0xEF then 2
+      when 0xF0..0xF7 then 3
       else
         raise("Invalid lead byte in UTF-8 byte sequence")
       end
