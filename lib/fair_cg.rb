@@ -467,8 +467,10 @@ class FairCG::FiniteAutomaton
 end
 
 module FairCG::Charset
+  USE_KCODE = ([1, 9, 2] <=> RUBY_VERSION.split('.').map {|n| n.to_i}) > 0
+  
   def self.decode_char(c)
-    case $KCODE
+    case USE_KCODE ? $KCODE : 'u'
     when /u/io
       l, *t = c.bytes.to_a
       indicated_t_count = case l
@@ -493,7 +495,7 @@ module FairCG::Charset
     dchars = ""
     uchars = []
     chars.each do |c|
-      case $KCODE
+      case USE_KCODE ? $KCODE : 'u'
       when /u/io
         case c
         when 0x00..0x7F
@@ -576,7 +578,11 @@ module FairCG::Charset
   end
   
   def self.is_succ(t, s)
-    (t[0..-2] == s[0..-2]) && (t[-1] == s[-1] + 1)
+    if USE_KCODE
+      (t[0..-2] == s[0..-2]) && (t[-1] == s[-1] + 1)
+    else
+      (t.codepoints[0..-2] == s.codepoints[0..-2]) && (t.codepoints[-1] == s.codepoints[-1] + 1)
+    end
   end
 end
 
