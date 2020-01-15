@@ -202,7 +202,7 @@ class FairCG::FiniteAutomaton
       def method_missing(name)
         action = @parser.actions[name]
         raise("#{name} not a defined action") unless action
-        raise("#{name} out of order") unless action.order_key >= @min_order_key
+        raise("#{name} out of order: #{caller[0]}") unless action.order_key >= @min_order_key
         @actions << name
         @min_order_key = action.order_key + 1
       end
@@ -225,6 +225,7 @@ class FairCG::FiniteAutomaton
       @name = name
       @final = final
       @transitions = {}
+      @at_end = []
     end
     
     attr_reader :final
@@ -236,6 +237,10 @@ class FairCG::FiniteAutomaton
     
     def default_transition?
       @default_transition || @parser.default_transition
+    end
+    
+    def at_end_actions
+      @at_end
     end
     
     def self.range_string(first, last)
@@ -302,6 +307,14 @@ class FairCG::FiniteAutomaton
         end_state,
         TransitionCapture.gather_actions(@parser, block)
       )]
+    end
+    
+    # Defines actions if input ends in this state
+    #
+    # The block, which is required, has the same format as a block for #transition
+    def at_end(&block)
+      raise "at_end requires a block" unless block
+      @at_end = TransitionCapture.gather_actions(@parser, block)
     end
     
     # Get the Transition object corresponding to a particular input character

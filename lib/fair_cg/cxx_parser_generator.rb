@@ -113,6 +113,17 @@ module FairCG::CxxParserGenerator
     end
   end
   
+  def table_namespace(ns)
+    case ns
+    when String
+      @table_namespace = ns.split('::')
+    when Array
+      @table_namespace = ns.dup
+    else
+      raise(InvalidArgumentError, "Namespace must be an array or string")
+    end
+  end
+  
   def action_params(action)
     char_v = action.options[:char]
     return char_v ? ("%s %s" % [char_type, char_v]) : ""
@@ -146,6 +157,7 @@ module FairCG::CxxParserGenerator
     header.puts("public:")
     header.puts("  #{cname}();")
     header.puts("  bool processChar(#{char_type} ch);")
+    header.puts("  bool inputEnds();")
     header.puts("  bool final() const;")
     header.puts
     header.puts("  struct Fields")
@@ -237,6 +249,20 @@ module FairCG::CxxParserGenerator
     impl.puts("  };")
   end
   
+  def generate_end_actions_table(impl)          # parserEndActions
+    impl.puts("  int parserEndActions[#{machine_def.state_names.length}] = {")
+    machine_def.state_names.each do |name|
+      info = machine_def.state_info(name)
+      actions = "0"
+      info.at_end_actions.tap do |action_array|
+        break if action_array.empty?
+        actions = action_array.collect {|a| "a_#{code_name(a)}"}.join("|")
+      end
+      impl.puts("    #{actions}, // #{name}")
+    end
+    impl.puts("  };")
+  end
+  
   def generate_char_classification_fn(impl)      # parserClassify
     impl.puts("  CharacterClass parserClassify(#{char_type} ch)")
     impl.puts("  {")
@@ -281,12 +307,13 @@ module FairCG::CxxParserGenerator
     end
     
     # FSM tables
-    impl.puts("namespace {")
+    impl.puts("namespace #{(@table_namespace || []).join('::')} {")
     generate_state_enum(impl)
     generate_char_class_enum(impl)
     generate_action_enum(impl)
     generate_transition_table(impl)
     generate_actions_table(impl)
+    generate_end_actions_table(impl)
     generate_char_classification_fn(impl)
     generate_final_states_fn(impl)
     impl.puts("}")
@@ -295,6 +322,7 @@ module FairCG::CxxParserGenerator
     # Parser constructor
     impl.puts("#{cname}::#{cname}()")
     impl.puts("{")
+    impl.puts("  using namespace #{(@table_namespace || []).join('::')};") if @table_namespace
     impl.puts("  m_state = s_#{code_name(machine_def.start_state)};")
     impl.puts("}")
     impl.puts
@@ -302,6 +330,7 @@ module FairCG::CxxParserGenerator
     # Process character
     impl.puts("bool #{cname}::processChar(#{char_type} ch)")
     impl.puts("{")
+    impl.puts("  using namespace #{(@table_namespace || []).join('::')};") if @table_namespace
     unless machine_def.state_info(:error)
       impl.puts("  if (m_state == s_#{code_name(:error)})")
       impl.puts("  {")
@@ -323,9 +352,33 @@ module FairCG::CxxParserGenerator
     impl.puts("}")
     impl.puts
     
+    # Handle end of input
+    impl.puts("bool #{cname}::inputEnds()")
+    impl.puts("{")
+    impl.puts("  using namespace #{(@table_namespace || []).join('::')};") if @table_namespace
+    unless machine_def.state_info(:error)
+      impl.puts("  if (m_state == s_#{code_name(:error)})")
+      impl.puts("  {")
+      impl.puts("    return false;")
+      impl.puts("  }")
+    end
+    impl.puts("  m_actions.reset_fields();") if respond_to?(:reset_fields)
+    impl.puts("  int actions = parserEndActions[m_state];")
+    actions_in_order.each do |action|
+      next if action.options[:char]
+      impl.puts("  if ((actions & a_#{code_name(action.name)}) != 0)")
+      impl.puts("  {")
+      impl.puts("    m_actions.do_#{code_name(action.name)}();")
+      impl.puts("  }")
+    end
+    impl.puts("  return true;")
+    impl.puts("}")
+    impl.puts
+    
     # Check for final state
     impl.puts("bool #{cname}::final() const")
     impl.puts("{")
+    impl.puts("  using namespace #{(@table_namespace || []).join('::')};") if @table_namespace
     impl.puts("  return parserInFinalState(m_state);")
     impl.puts("}")
     impl.puts
